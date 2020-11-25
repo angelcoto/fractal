@@ -8,6 +8,7 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"os/user"
 	"sync"
 	"time"
 )
@@ -22,26 +23,37 @@ const (
 	//size = 2.5
 
 	// Quality
-	imgWidth = 1024
+	imgWidth = 1920
+	imgHigh  = 1080
 	maxIter  = 1000
-	samples  = 50
+	samples  = 25
 
 	showProgress = true
 )
 
 func main() {
+	usr, err := user.Current()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	filename := usr.HomeDir + "/fractal.png" // Default output filename
+	if len(os.Args) == 2 {
+		filename = usr.HomeDir + "/" + os.Args[1] // Change filename if given as argument
+	}
+
 	log.Println("Allocating image...")
-	img := image.NewRGBA(image.Rect(0, 0, imgWidth, imgWidth))
+	img := image.NewRGBA(image.Rect(0, 0, imgWidth, imgHigh))
 
 	log.Println("Rendering...")
 	start := time.Now()
 	render(img)
-	end := time.Now()
 
-	log.Println("Done rendering in", end.Sub(start))
+	log.Println("Done rendering in", time.Since(start))
 
 	log.Println("Encoding image...")
-	f, err := os.Create("result.png")
+	f, err := os.Create(filename)
+	defer f.Close()
 	if err != nil {
 		panic(err)
 	}
@@ -49,7 +61,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	log.Println("Done!")
+	log.Println("Done! in", time.Since(start))
 }
 
 func render(img *image.RGBA) {
@@ -59,22 +71,24 @@ func render(img *image.RGBA) {
 	if showProgress {
 		go func() {
 			for i := 1; ; i++ {
-				if _, k := <- progress; !k { break }
-				fmt.Printf("\r%d/%d (%d%%)", i, imgWidth, int(100*(float64(i) / float64(imgWidth))))
+				if _, k := <-progress; !k {
+					break
+				}
+				fmt.Printf("\r%d/%d (%d%%)", i, imgWidth, int(100*(float64(i)/float64(imgHigh))))
 			}
 			fmt.Println()
 		}()
 	}
 
 	var wg sync.WaitGroup
-	for y := 0; y < imgWidth; y++ {
+	for y := 0; y < imgHigh; y++ {
 		wg.Add(1)
 		go func(y int) {
 			for x := 0; x < imgWidth; x++ {
 				var sampledColours [samples]color.RGBA
 				for i := 0; i < samples; i++ {
-					nx := size * ((float64(x) + rand.Float64()) / float64(imgWidth)) + px
-					ny := size * ((float64(y) + rand.Float64()) / float64(imgWidth)) + py
+					nx := size*((float64(x)+rand.Float64())/float64(imgWidth)) + px
+					ny := size*((float64(y)+rand.Float64())/float64(imgHigh)) + py
 					sampledColours[i] = paint(mandelbrotIter(nx, ny, maxIter))
 				}
 				var r, g, b int
@@ -101,10 +115,10 @@ func render(img *image.RGBA) {
 }
 
 func paint(r float64, n int) color.RGBA {
-	var insideSet = color.RGBA{ R: 255, G: 255, B: 255, A: 255 }
+	var insideSet = color.RGBA{R: 255, G: 255, B: 255, A: 255}
 
 	if r > 4 {
-		c := hslToRGB(float64(n) / 800 * r, 1, 0.5)
+		c := hslToRGB(float64(n)/800*r, 1, 0.5)
 		return c
 	} else {
 		return insideSet
@@ -115,12 +129,12 @@ func mandelbrotIter(px, py float64, maxIter int) (float64, int) {
 	var x, y, xx, yy, xy float64
 
 	for i := 0; i < maxIter; i++ {
-		xx, yy, xy = x * x, y * y, x * y
-		if xx + yy > 4 {
+		xx, yy, xy = x*x, y*y, x*y
+		if xx+yy > 4 {
 			return xx + yy, i
 		}
 		x = xx - yy + px
-		y = 2 * xy + py
+		y = 2*xy + py
 	}
 
 	return xx + yy, maxIter
